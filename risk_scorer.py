@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install -r ./requirements.txt
+# MAGIC %pip install -q "polars" "numpy" "scikit-learn"
 
 # COMMAND ----------
 
@@ -20,6 +20,7 @@ dbutils.library.restartPython()
 from pathlib import Path
 
 import polars as pl
+import polars.selectors as cs
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
@@ -40,24 +41,28 @@ print("score:", df3.shape)
 # ---- preprocessing ----
 
 # fill numeric missing with 0 -- good enough for now
-df2[df2.select_dtypes("number").columns] = df2.select_dtypes("number").fillna(0)
-df3[df3.select_dtypes("number").columns] = df3.select_dtypes("number").fillna(0)
+df2 = df2.with_columns(cs.numeric().fill_null(0))
+df3 = df3.with_columns(cs.numeric().fill_null(0))
 
 # encode categoricals for train
-df2["coverage_type"] = df2["coverage_type"].astype("category").cat.codes
-df2["business_type"] = df2["business_type"].astype("category").cat.codes
-df2["state"] = df2["state"].astype("category").cat.codes
+df2 = df2.with_columns(
+    pl.col("coverage_type").cast(pl.Categorical).to_physical().alias("coverage_type"),
+    pl.col("business_type").cast(pl.Categorical).to_physical().alias("business_type"),
+    pl.col("state").cast(pl.Categorical).to_physical().alias("state"),
+)
 
 # same for score
-df3["coverage_type"] = df3["coverage_type"].astype("category").cat.codes
-df3["business_type"] = df3["business_type"].astype("category").cat.codes
-df3["state"] = df3["state"].astype("category").cat.codes
+df3 = df3.with_columns(
+    pl.col("coverage_type").cast(pl.Categorical).to_physical().alias("coverage_type"),
+    pl.col("business_type").cast(pl.Categorical).to_physical().alias("business_type"),
+    pl.col("state").cast(pl.Categorical).to_physical().alias("state"),
+)
 
 # COMMAND ----------
 
 # ---- target ----
 # using binary had-a-claim flag as target
-df2["target"] = (df2["claim_count"] > 0).astype(int)
+df2 = df2.with_columns((pl.col("claim_count") > 0).cast(pl.Int64).alias("target"))
 print("positive rate:", round(df2["target"].mean(), 3))
 
 # COMMAND ----------
@@ -82,8 +87,6 @@ feat_cols = [
     "risk_score_external",
     "num_heavy_vehicles",
     "late_payment_count",
-    "claim_paid_amount_current_period",
-    "days_to_first_claim_report",
 ]
 
 X = df2[feat_cols]
@@ -112,6 +115,6 @@ print("accuracy:", accuracy_score(y_train, x1))
 X2 = df3[feat_cols]
 preds = tmp.predict(X2)
 
-df3["risk_score"] = preds
-df3[["policy_id", "risk_score"]].to_csv("predictions.csv")
+df3 = df3.with_columns(pl.Series("risk_score", preds))
+df3.select(["policy_id", "risk_score"]).write_csv("predictions.csv")
 print("done -- predictions.csv written")
