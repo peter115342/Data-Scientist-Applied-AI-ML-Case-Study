@@ -1,0 +1,19 @@
+# Virtual environments
+.venv/
+
+# Python caches and tooling state
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Jupyter local state
+.ipynb_checkpoints/
+
+# Generated local artifacts
+predictions.csv
+artifacts/
+models/
