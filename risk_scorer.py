@@ -17,7 +17,6 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
-from pathlib import Path
 
 import polars as pl
 import polars.selectors as cs
@@ -29,9 +28,8 @@ from sklearn.metrics import accuracy_score
 # COMMAND ----------
 
 # ---- load ----
-DATA_DIR = Path.cwd()
-df2 = pl.read_csv(DATA_DIR / "train.csv")
-df3 = pl.read_csv(DATA_DIR / "score.csv")
+df2 = pl.read_csv("train.csv")
+df3 = pl.read_csv("score.csv")
 
 print("train:", df2.shape)
 print("score:", df3.shape)
@@ -86,7 +84,6 @@ feat_cols = [
     "annual_premium",
     "risk_score_external",
     "num_heavy_vehicles",
-    "late_payment_count",
 ]
 
 X = df2[feat_cols]
