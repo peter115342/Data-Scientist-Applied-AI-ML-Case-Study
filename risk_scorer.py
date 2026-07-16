@@ -1,14 +1,23 @@
-# %% [markdown]
-# Score commercial auto policies for expected claim risk
-# Fits a model on historical data and scores the current period
-#
-# Data:
-# train.csv  - policies 2020-2022, includes claim outcomes
-# score.csv  - policies 2023-2024, no outcomes (to be scored)
+# Databricks notebook source
+# MAGIC %pip install -r ./requirements.txt
 
-# %%
-# %pip install -q "polars" "numpy" "scikit-learn"
+# COMMAND ----------
 
+dbutils.library.restartPython()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC # Commercial auto policy risk scoring
+# MAGIC
+# MAGIC Fits a model on historical data and scores the current period.
+# MAGIC
+# MAGIC - `train.csv`: policies from 2020–2022, including claim outcomes
+# MAGIC - `score.csv`: policies from 2023–2024, without outcomes
+
+# COMMAND ----------
+
+from pathlib import Path
 
 import polars as pl
 import numpy as np
@@ -16,16 +25,18 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
-# %%
-# ---- load ----
+# COMMAND ----------
 
-df2 = pl.read_csv("./train.csv")
-df3 = pl.read_csv("./score.csv")
+# ---- load ----
+DATA_DIR = Path.cwd()
+df2 = pl.read_csv(DATA_DIR / "train.csv")
+df3 = pl.read_csv(DATA_DIR / "score.csv")
 
 print("train:", df2.shape)
 print("score:", df3.shape)
 
-# %%
+# COMMAND ----------
+
 # ---- preprocessing ----
 
 # fill numeric missing with 0 -- good enough for now
@@ -42,13 +53,15 @@ df3["coverage_type"] = df3["coverage_type"].astype("category").cat.codes
 df3["business_type"] = df3["business_type"].astype("category").cat.codes
 df3["state"] = df3["state"].astype("category").cat.codes
 
-# %%
+# COMMAND ----------
+
 # ---- target ----
 # using binary had-a-claim flag as target
 df2["target"] = (df2["claim_count"] > 0).astype(int)
 print("positive rate:", round(df2["target"].mean(), 3))
 
-# %%
+# COMMAND ----------
+
 # ---- features ----
 feat_cols = [
     "coverage_type",
@@ -76,7 +89,8 @@ feat_cols = [
 X = df2[feat_cols]
 y = df2["target"]
 
-# %%
+# COMMAND ----------
+
 # ---- fit model ----
 
 # random split -- not time-based
@@ -85,13 +99,15 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 tmp = LogisticRegression(max_iter=1000)
 tmp.fit(X_train, y_train)
 
-# %%
+# COMMAND ----------
+
 # ---- evaluate ----
 x1 = tmp.predict(X_train)
 print("accuracy:", accuracy_score(y_train, x1))
 # results look solid
 
-# %%
+# COMMAND ----------
+
 # ---- score new policies ----
 X2 = df3[feat_cols]
 preds = tmp.predict(X2)
