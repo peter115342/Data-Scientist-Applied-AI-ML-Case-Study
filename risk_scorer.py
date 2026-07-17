@@ -43,17 +43,31 @@ df2 = df2.with_columns(cs.numeric().fill_null(0))
 df3 = df3.with_columns(cs.numeric().fill_null(0))
 
 # encode categoricals for train
+category_columns = ["coverage_type", "business_type", "state"]
+category_maps = {
+    column: {
+        value: code
+        for code, value in enumerate(sorted(df2[column].drop_nulls().unique().to_list()))
+    }
+    for column in category_columns
+}
 df2 = df2.with_columns(
-    pl.col("coverage_type").cast(pl.Categorical).to_physical().alias("coverage_type"),
-    pl.col("business_type").cast(pl.Categorical).to_physical().alias("business_type"),
-    pl.col("state").cast(pl.Categorical).to_physical().alias("state"),
+    [
+        pl.col(column)
+        .replace_strict(category_maps[column], default=-1, return_dtype=pl.Int64)
+        .alias(column)
+        for column in category_columns
+    ]
 )
 
 # same for score
 df3 = df3.with_columns(
-    pl.col("coverage_type").cast(pl.Categorical).to_physical().alias("coverage_type"),
-    pl.col("business_type").cast(pl.Categorical).to_physical().alias("business_type"),
-    pl.col("state").cast(pl.Categorical).to_physical().alias("state"),
+    [
+        pl.col(column)
+        .replace_strict(category_maps[column], default=-1, return_dtype=pl.Int64)
+        .alias(column)
+        for column in category_columns
+    ]
 )
 
 # COMMAND ----------
