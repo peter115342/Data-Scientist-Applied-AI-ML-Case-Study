@@ -21,9 +21,12 @@ dbutils.library.restartPython()
 import polars as pl
 import polars.selectors as cs
 import numpy as np
+from sklearn.compose import ColumnTransformer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # COMMAND ----------
 
@@ -42,36 +45,6 @@ print("score:", df3.shape)
 df2 = df2.with_columns(cs.numeric().fill_null(0))
 df3 = df3.with_columns(cs.numeric().fill_null(0))
 
-# encode categoricals for train
-category_columns = ["coverage_type", "business_type", "state"]
-category_maps = {
-    column: {
-        value: code
-        for code, value in enumerate(
-            sorted(df2[column].drop_nulls().unique().to_list())
-        )
-    }
-    for column in category_columns
-}
-df2 = df2.with_columns(
-    [
-        pl.col(column)
-        .replace_strict(category_maps[column], default=-1, return_dtype=pl.Int64)
-        .alias(column)
-        for column in category_columns
-    ]
-)
-
-# same for score
-df3 = df3.with_columns(
-    [
-        pl.col(column)
-        .replace_strict(category_maps[column], default=-1, return_dtype=pl.Int64)
-        .alias(column)
-        for column in category_columns
-    ]
-)
-
 # COMMAND ----------
 
 # ---- target ----
@@ -82,16 +55,14 @@ print("positive rate:", round(df2["target"].mean(), 3))
 # COMMAND ----------
 
 # ---- features ----
-feat_cols = [
-    "coverage_type",
+category_columns = ["coverage_type", "business_type", "state"]
+numeric_columns = [
     "vehicle_count",
     "vehicle_avg_age",
     "driver_count",
     "driver_avg_age",
     "years_in_business",
     "prior_year_mileage_000",
-    "business_type",
-    "state",
     "prior_apd_claim_count",
     "prior_al_claim_count",
     "prior_loss_amount",
@@ -101,6 +72,7 @@ feat_cols = [
     "risk_score_external",
     "num_heavy_vehicles",
 ]
+feat_cols = category_columns + numeric_columns
 
 X = df2[feat_cols]
 y = df2["target"]
@@ -117,7 +89,13 @@ X_test = test_df[feat_cols]
 y_train = train_df["target"]
 y_test = test_df["target"]
 
-tmp = LogisticRegression(max_iter=1000)
+preprocessor = ColumnTransformer(
+    [
+        ("numeric", StandardScaler(), numeric_columns),
+        ("categorical", OneHotEncoder(handle_unknown="ignore"), category_columns),
+    ]
+)
+tmp = make_pipeline(preprocessor, LogisticRegression(max_iter=1000))
 tmp.fit(X_train, y_train)
 
 # COMMAND ----------
