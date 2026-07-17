@@ -93,8 +93,13 @@ y = df2["target"]
 
 # ---- fit model ----
 
-# random split -- not time-based
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+# time-based split - train on 2020-2021, test on 2022 policies
+train_df = df2.filter(pl.col("snapshot_date") < "2022-01-01")
+test_df = df2.filter(pl.col("snapshot_date") >= "2022-01-01")
+X_train = train_df[feat_cols]
+X_test = test_df[feat_cols]
+y_train = train_df["target"]
+y_test = test_df["target"]
 
 tmp = LogisticRegression(max_iter=1000)
 tmp.fit(X_train, y_train)
@@ -102,8 +107,8 @@ tmp.fit(X_train, y_train)
 # COMMAND ----------
 
 # ---- evaluate ----
-x1 = tmp.predict(X_train)
-print("accuracy:", accuracy_score(y_train, x1))
+x1 = tmp.predict(X_test)
+print("accuracy:", accuracy_score(y_test, x1))
 # results look solid
 
 # COMMAND ----------
