@@ -23,7 +23,7 @@ import polars.selectors as cs
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import average_precision_score, roc_auc_score
 
 # COMMAND ----------
 
@@ -47,7 +47,9 @@ category_columns = ["coverage_type", "business_type", "state"]
 category_maps = {
     column: {
         value: code
-        for code, value in enumerate(sorted(df2[column].drop_nulls().unique().to_list()))
+        for code, value in enumerate(
+            sorted(df2[column].drop_nulls().unique().to_list())
+        )
     }
     for column in category_columns
 }
@@ -121,16 +123,16 @@ tmp.fit(X_train, y_train)
 # COMMAND ----------
 
 # ---- evaluate ----
-x1 = tmp.predict(X_test)
-print("accuracy:", accuracy_score(y_test, x1))
+x1 = tmp.predict_proba(X_test)[:, 1]
+print("roc_auc:", roc_auc_score(y_test, x1))
+print("average_precision:", average_precision_score(y_test, x1))
 # results look solid
 
 # COMMAND ----------
 
 # ---- score new policies ----
 X2 = df3[feat_cols]
-preds = tmp.predict_probability(X2)[:, 1]
-
+preds = tmp.predict_proba(X2)[:, 1]
 df3 = df3.with_columns(pl.Series("risk_score", preds))
 df3.select(["policy_id", "risk_score"]).write_csv("predictions.csv")
 print("done -- predictions.csv written")
