@@ -129,7 +129,7 @@ print("accuracy:", accuracy_score(y_test, x1))
 
 # ---- score new policies ----
 X2 = df3[feat_cols]
-preds = tmp.predict(X2)
+preds = tmp.predict_probability(X2)[:, 1]
 
 df3 = df3.with_columns(pl.Series("risk_score", preds))
 df3.select(["policy_id", "risk_score"]).write_csv("predictions.csv")
