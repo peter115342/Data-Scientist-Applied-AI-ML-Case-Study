@@ -47,6 +47,8 @@ df3 = df3.with_columns(cs.numeric().fill_null(0))
 
 df2 = df2.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
 df3 = df3.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
+df2 = df2.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
+df3 = df3.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
 
 # COMMAND ----------
 
@@ -58,7 +60,7 @@ print("positive rate:", round(df2["target"].mean(), 3))
 # COMMAND ----------
 
 # ---- features ----
-category_columns = ["coverage_type", "business_type", "state"]
+category_columns = ["coverage_type", "business_type", "state", "snapshot_month"]
 numeric_columns = [
     "vehicle_count",
     "vehicle_avg_age",
