@@ -77,6 +77,12 @@ numeric_columns = [
 ]
 feat_cols = category_columns + numeric_columns
 
+missing_score_features = set(feat_cols) - set(df3.columns)
+if missing_score_features:
+    raise ValueError(f"score.csv is missing required features: {missing_score_features}")
+if df3["policy_id"].null_count() or df3["policy_id"].n_unique() != df3.height:
+    raise ValueError("score.csv must contain one non-null, unique policy_id per row")
+
 X = df2[feat_cols]
 y = df2["target"]
 
@@ -115,5 +121,8 @@ print("average_precision:", average_precision_score(y_test, x1))
 X2 = df3[feat_cols]
 preds = tmp.predict_proba(X2)[:, 1]
 df3 = df3.with_columns(pl.Series("risk_score", preds))
-df3.select(["policy_id", "risk_score"]).write_csv("predictions.csv")
+predictions = df3.select(["policy_id", "risk_score"])
+if predictions.height != df3.height or predictions["risk_score"].null_count():
+    raise ValueError("predictions must contain one non-null risk_score per policy")
+predictions.write_csv("predictions.csv")
 print("done -- predictions.csv written")
