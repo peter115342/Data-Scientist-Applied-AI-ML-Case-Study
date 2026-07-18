@@ -117,6 +117,11 @@ print("average_precision:", average_precision_score(y_test, x1))
 
 # COMMAND ----------
 
+# ---- refit final model ----
+tmp.fit(X, y)
+
+# COMMAND ----------
+
 # ---- score new policies ----
 X2 = df3[feat_cols]
 preds = tmp.predict_proba(X2)[:, 1]
