@@ -45,6 +45,9 @@ print("score:", df3.shape)
 df2 = df2.with_columns(cs.numeric().fill_null(0))
 df3 = df3.with_columns(cs.numeric().fill_null(0))
 
+df2 = df2.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
+df3 = df3.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
+
 # COMMAND ----------
 
 # ---- target ----
