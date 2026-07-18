@@ -56,7 +56,13 @@ print("positive rate:", round(df2["target"].mean(), 3))
 # COMMAND ----------
 
 # ---- features ----
-category_columns = ["coverage_type", "business_type", "state", "snapshot_month"]
+category_columns = [
+    "coverage_type",
+    "business_type",
+    "state",
+    "snapshot_month",
+    "payment_frequency",
+]
 numeric_columns = [
     "vehicle_count",
     "vehicle_avg_age",
@@ -106,7 +112,14 @@ preprocessor = ColumnTransformer(
             ),
             numeric_columns,
         ),
-        ("categorical", OneHotEncoder(handle_unknown="ignore"), category_columns),
+        (
+            "categorical",
+            make_pipeline(
+                SimpleImputer(strategy="most_frequent"),
+                OneHotEncoder(handle_unknown="ignore"),
+            ),
+            category_columns,
+        ),
     ]
 )
 tmp = make_pipeline(preprocessor, LogisticRegression(max_iter=1000))
