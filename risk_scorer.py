@@ -19,9 +19,9 @@ dbutils.library.restartPython()
 
 
 import polars as pl
-import polars.selectors as cs
 import numpy as np
 from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import average_precision_score, roc_auc_score
@@ -40,10 +40,6 @@ print("score:", df3.shape)
 # COMMAND ----------
 
 # ---- preprocessing ----
-
-# fill numeric missing with 0 -- good enough for now
-df2 = df2.with_columns(cs.numeric().fill_null(0))
-df3 = df3.with_columns(cs.numeric().fill_null(0))
 
 df2 = df2.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
 df3 = df3.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
@@ -102,7 +98,14 @@ y_test = test_df["target"]
 
 preprocessor = ColumnTransformer(
     [
-        ("numeric", StandardScaler(), numeric_columns),
+        (
+            "numeric",
+            make_pipeline(
+                SimpleImputer(strategy="median", add_indicator=True),
+                StandardScaler(),
+            ),
+            numeric_columns,
+        ),
         ("categorical", OneHotEncoder(handle_unknown="ignore"), category_columns),
     ]
 )
