@@ -18,6 +18,10 @@ dbutils.library.restartPython()
 # COMMAND ----------
 
 
+import json
+from pathlib import Path
+
+from joblib import dump
 import polars as pl
 import numpy as np
 from sklearn.compose import ColumnTransformer
@@ -129,14 +133,34 @@ tmp.fit(X_train, y_train)
 
 # ---- evaluate ----
 x1 = tmp.predict_proba(X_test)[:, 1]
-print("roc_auc:", roc_auc_score(y_test, x1))
-print("average_precision:", average_precision_score(y_test, x1))
+validation_roc_auc = roc_auc_score(y_test, x1)
+validation_average_precision = average_precision_score(y_test, x1)
+print("roc_auc:", validation_roc_auc)
+print("average_precision:", validation_average_precision)
 # results look solid
 
 # COMMAND ----------
 
 # ---- refit final model ----
 tmp.fit(X, y)
+
+artifact_dir = Path("artifacts")
+artifact_dir.mkdir(exist_ok=True)
+dump(tmp, artifact_dir / "risk_model.joblib")
+(artifact_dir / "model_metadata.json").write_text(
+    json.dumps(
+        {
+            "model_type": "logistic_regression",
+            "training_period": "2020-2022",
+            "validation_period": "2022",
+            "validation_roc_auc": validation_roc_auc,
+            "validation_average_precision": validation_average_precision,
+            "feature_columns": feat_cols,
+        },
+        indent=2,
+    ),
+    encoding="utf-8",
+)
 
 # COMMAND ----------
 
