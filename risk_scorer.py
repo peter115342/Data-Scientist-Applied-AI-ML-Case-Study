@@ -34,9 +34,19 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
 # COMMAND ----------
 
+# ---- configuration ----
+TRAIN_DATA_PATH = "train.csv"
+SCORE_DATA_PATH = "score.csv"
+PREDICTIONS_PATH = "predictions.csv"
+ARTIFACT_DIR = Path("artifacts")
+VALIDATION_CUTOFF = "2022-01-01"
+MODEL_CONFIG = {"max_iter": 1000}
+
+# COMMAND ----------
+
 # ---- load ----
-df2 = pl.read_csv("train.csv")
-df3 = pl.read_csv("score.csv")
+df2 = pl.read_csv(TRAIN_DATA_PATH)
+df3 = pl.read_csv(SCORE_DATA_PATH)
 
 print("train:", df2.shape)
 print("score:", df3.shape)
@@ -99,8 +109,8 @@ y = df2["target"]
 # ---- fit model ----
 
 # time-based split - train on 2020-2021, test on 2022 policies
-train_df = df2.filter(pl.col("snapshot_date") < "2022-01-01")
-test_df = df2.filter(pl.col("snapshot_date") >= "2022-01-01")
+train_df = df2.filter(pl.col("snapshot_date") < VALIDATION_CUTOFF)
+test_df = df2.filter(pl.col("snapshot_date") >= VALIDATION_CUTOFF)
 X_train = train_df[feat_cols]
 X_test = test_df[feat_cols]
 y_train = train_df["target"]
@@ -126,7 +136,7 @@ preprocessor = ColumnTransformer(
         ),
     ]
 )
-tmp = make_pipeline(preprocessor, LogisticRegression(max_iter=1000))
+tmp = make_pipeline(preprocessor, LogisticRegression(**MODEL_CONFIG))
 tmp.fit(X_train, y_train)
 
 # COMMAND ----------
@@ -144,10 +154,9 @@ print("average_precision:", validation_average_precision)
 # ---- refit final model ----
 tmp.fit(X, y)
 
-artifact_dir = Path("artifacts")
-artifact_dir.mkdir(exist_ok=True)
-dump(tmp, artifact_dir / "risk_model.joblib")
-(artifact_dir / "model_metadata.json").write_text(
+ARTIFACT_DIR.mkdir(exist_ok=True)
+dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
+(ARTIFACT_DIR / "model_metadata.json").write_text(
     json.dumps(
         {
             "model_type": "logistic_regression",
@@ -156,6 +165,8 @@ dump(tmp, artifact_dir / "risk_model.joblib")
             "validation_roc_auc": validation_roc_auc,
             "validation_average_precision": validation_average_precision,
             "feature_columns": feat_cols,
+            "validation_cutoff": VALIDATION_CUTOFF,
+            "model_config": MODEL_CONFIG,
         },
         indent=2,
     ),
@@ -171,5 +182,5 @@ df3 = df3.with_columns(pl.Series("risk_score", preds))
 predictions = df3.select(["policy_id", "risk_score"])
 if predictions.height != df3.height or predictions["risk_score"].null_count():
     raise ValueError("predictions must contain one non-null risk_score per policy")
-predictions.write_csv("predictions.csv")
-print("done -- predictions.csv written")
+predictions.write_csv(PREDICTIONS_PATH)
+print(f"done -- {PREDICTIONS_PATH} written")
