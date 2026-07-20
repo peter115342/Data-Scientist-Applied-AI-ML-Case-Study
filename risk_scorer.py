@@ -27,7 +27,7 @@ import polars as pl
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, roc_auc_score
+from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 
@@ -184,6 +184,9 @@ for candidate_c in CANDIDATE_C_VALUES:
             "validation_average_precision": average_precision_score(
                 y_validation, candidate_probabilities
             ),
+            "validation_brier_score": brier_score_loss(
+                y_validation, candidate_probabilities
+            ),
         }
     )
 
@@ -202,8 +205,14 @@ tmp.fit(X_train, y_train)
 x1 = tmp.predict_proba(X_test)[:, 1]
 test_roc_auc = roc_auc_score(y_test, x1)
 test_average_precision = average_precision_score(y_test, x1)
+test_brier_score = brier_score_loss(y_test, x1)
+test_mean_predicted_risk = x1.mean()
+test_observed_claim_rate = y_test.mean()
 print("test_roc_auc:", test_roc_auc)
 print("test_average_precision:", test_average_precision)
+print("test_brier_score:", test_brier_score)
+print("test_mean_predicted_risk:", test_mean_predicted_risk)
+print("test_observed_claim_rate:", test_observed_claim_rate)
 # results look solid
 
 # COMMAND ----------
@@ -223,6 +232,9 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "test_period": "2022",
             "test_roc_auc": test_roc_auc,
             "test_average_precision": test_average_precision,
+            "test_brier_score": test_brier_score,
+            "test_mean_predicted_risk": test_mean_predicted_risk,
+            "test_observed_claim_rate": test_observed_claim_rate,
             "feature_columns": feat_cols,
             "log1p_features": LOG_FEATURES,
             "validation_cutoff": VALIDATION_CUTOFF,
