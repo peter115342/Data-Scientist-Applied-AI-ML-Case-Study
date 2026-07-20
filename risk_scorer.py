@@ -68,6 +68,17 @@ df3 = df3.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercas
 df2 = df2.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
 df3 = df3.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
 
+invalid_training_premiums = df2.filter(pl.col("annual_premium") < 0).height
+invalid_scoring_premiums = df3.filter(pl.col("annual_premium") < 0).height
+# Treat negative premiums as missing.
+premium_sanitization = pl.when(pl.col("annual_premium") < 0).then(
+    None
+).otherwise(pl.col("annual_premium"))
+df2 = df2.with_columns(premium_sanitization.alias("annual_premium"))
+df3 = df3.with_columns(premium_sanitization.alias("annual_premium"))
+print("invalid training premiums converted to null:", invalid_training_premiums)
+print("invalid scoring premiums converted to null:", invalid_scoring_premiums)
+
 # Add log features to capture diminishing effects in skewed variables.
 log_feature_expressions = [
     pl.col(source).clip(lower_bound=0).log1p().alias(feature)
@@ -246,6 +257,8 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "training_period": "2020-2022",
             "training_rows_before_deduplication": training_rows_before_deduplication,
             "deduplicated_training_rows": deduplicated_training_rows,
+            "invalid_training_premiums": invalid_training_premiums,
+            "invalid_scoring_premiums": invalid_scoring_premiums,
             "model_selection_training_period": "2020",
             "validation_period": "2021",
             "test_period": "2022",
