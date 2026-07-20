@@ -42,6 +42,13 @@ VALIDATION_CUTOFF = "2021-01-01"
 TEST_CUTOFF = "2022-01-01"
 CANDIDATE_C_VALUES = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 MODEL_CONFIG = {"max_iter": 1000}
+LOG_FEATURES = {
+    "vehicle_count": "log_vehicle_count",
+    "driver_count": "log_driver_count",
+    "prior_year_mileage_000": "log_prior_year_mileage",
+    "prior_loss_amount": "log_prior_loss_amount",
+    "annual_premium": "log_annual_premium",
+}
 
 # COMMAND ----------
 
@@ -60,6 +67,14 @@ df2 = df2.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercas
 df3 = df3.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
 df2 = df2.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
 df3 = df3.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
+
+# Add log features to capture diminishing effects in skewed variables.
+log_feature_expressions = [
+    pl.col(source).clip(lower_bound=0).log1p().alias(feature)
+    for source, feature in LOG_FEATURES.items()
+]
+df2 = df2.with_columns(log_feature_expressions)
+df3 = df3.with_columns(log_feature_expressions)
 
 # COMMAND ----------
 
@@ -93,6 +108,7 @@ numeric_columns = [
     "annual_premium",
     "risk_score_external",
     "num_heavy_vehicles",
+    *LOG_FEATURES.values(),
 ]
 feat_cols = category_columns + numeric_columns
 
@@ -208,6 +224,7 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "test_roc_auc": test_roc_auc,
             "test_average_precision": test_average_precision,
             "feature_columns": feat_cols,
+            "log1p_features": LOG_FEATURES,
             "validation_cutoff": VALIDATION_CUTOFF,
             "test_cutoff": TEST_CUTOFF,
             "model_selection_metric": "roc_auc",
