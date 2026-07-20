@@ -3,7 +3,8 @@
 
 # COMMAND ----------
 
-dbutils.library.restartPython()
+if "dbutils" in globals():
+    globals()["dbutils"].library.restartPython()
 
 # COMMAND ----------
 
@@ -23,11 +24,9 @@ from pathlib import Path
 
 from joblib import dump
 import polars as pl
-import numpy as np
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
@@ -39,7 +38,9 @@ TRAIN_DATA_PATH = "train.csv"
 SCORE_DATA_PATH = "score.csv"
 PREDICTIONS_PATH = "predictions.csv"
 ARTIFACT_DIR = Path("artifacts")
-VALIDATION_CUTOFF = "2022-01-01"
+VALIDATION_CUTOFF = "2021-01-01"
+TEST_CUTOFF = "2022-01-01"
+CANDIDATE_C_VALUES = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 MODEL_CONFIG = {"max_iter": 1000}
 
 # COMMAND ----------
@@ -108,45 +109,85 @@ y = df2["target"]
 
 # ---- fit model ----
 
-# time-based split - train on 2020-2021, test on 2022 policies
-train_df = df2.filter(pl.col("snapshot_date") < VALIDATION_CUTOFF)
-test_df = df2.filter(pl.col("snapshot_date") >= VALIDATION_CUTOFF)
+# Use 2020 for model selection, 2021 for validation, and leave 2022 untouched
+# for the final estimate of performance on unseen data.
+tuning_train_df = df2.filter(pl.col("snapshot_date") < VALIDATION_CUTOFF)
+validation_df = df2.filter(
+    (pl.col("snapshot_date") >= VALIDATION_CUTOFF)
+    & (pl.col("snapshot_date") < TEST_CUTOFF)
+)
+train_df = df2.filter(pl.col("snapshot_date") < TEST_CUTOFF)
+test_df = df2.filter(pl.col("snapshot_date") >= TEST_CUTOFF)
+
+X_tuning_train = tuning_train_df[feat_cols]
+y_tuning_train = tuning_train_df["target"]
+X_validation = validation_df[feat_cols]
+y_validation = validation_df["target"]
 X_train = train_df[feat_cols]
 X_test = test_df[feat_cols]
 y_train = train_df["target"]
 y_test = test_df["target"]
 
-preprocessor = ColumnTransformer(
-    [
-        (
-            "numeric",
-            make_pipeline(
-                SimpleImputer(strategy="median", add_indicator=True),
-                StandardScaler(),
+
+def build_model(model_config):
+    preprocessor = ColumnTransformer(
+        [
+            (
+                "numeric",
+                make_pipeline(
+                    SimpleImputer(strategy="median", add_indicator=True),
+                    StandardScaler(),
+                ),
+                numeric_columns,
             ),
-            numeric_columns,
-        ),
-        (
-            "categorical",
-            make_pipeline(
-                SimpleImputer(strategy="most_frequent"),
-                OneHotEncoder(handle_unknown="ignore"),
+            (
+                "categorical",
+                make_pipeline(
+                    SimpleImputer(strategy="most_frequent"),
+                    OneHotEncoder(handle_unknown="ignore"),
+                ),
+                category_columns,
             ),
-            category_columns,
-        ),
-    ]
+        ]
+    )
+    return make_pipeline(preprocessor, LogisticRegression(**model_config))
+
+
+model_selection_results = []
+for candidate_c in CANDIDATE_C_VALUES:
+    candidate_config = {**MODEL_CONFIG, "C": candidate_c}
+    candidate_model = build_model(candidate_config)
+    candidate_model.fit(X_tuning_train, y_tuning_train)
+    candidate_probabilities = candidate_model.predict_proba(X_validation)[:, 1]
+    model_selection_results.append(
+        {
+            "C": candidate_c,
+            "validation_roc_auc": roc_auc_score(
+                y_validation, candidate_probabilities
+            ),
+            "validation_average_precision": average_precision_score(
+                y_validation, candidate_probabilities
+            ),
+        }
+    )
+
+selected_result = max(
+    model_selection_results, key=lambda result: result["validation_roc_auc"]
 )
-tmp = make_pipeline(preprocessor, LogisticRegression(**MODEL_CONFIG))
+selected_model_config = {**MODEL_CONFIG, "C": selected_result["C"]}
+print("selected model config:", selected_model_config)
+
+tmp = build_model(selected_model_config)
 tmp.fit(X_train, y_train)
 
 # COMMAND ----------
 
 # ---- evaluate ----
 x1 = tmp.predict_proba(X_test)[:, 1]
-validation_roc_auc = roc_auc_score(y_test, x1)
-validation_average_precision = average_precision_score(y_test, x1)
-print("roc_auc:", validation_roc_auc)
-print("average_precision:", validation_average_precision)
+test_roc_auc = roc_auc_score(y_test, x1)
+test_average_precision = average_precision_score(y_test, x1)
+print("test_roc_auc:", test_roc_auc)
+print("test_average_precision:", test_average_precision)
 # results look solid
 
 # COMMAND ----------
@@ -161,12 +202,17 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
         {
             "model_type": "logistic_regression",
             "training_period": "2020-2022",
-            "validation_period": "2022",
-            "validation_roc_auc": validation_roc_auc,
-            "validation_average_precision": validation_average_precision,
+            "model_selection_training_period": "2020",
+            "validation_period": "2021",
+            "test_period": "2022",
+            "test_roc_auc": test_roc_auc,
+            "test_average_precision": test_average_precision,
             "feature_columns": feat_cols,
             "validation_cutoff": VALIDATION_CUTOFF,
-            "model_config": MODEL_CONFIG,
+            "test_cutoff": TEST_CUTOFF,
+            "model_selection_metric": "roc_auc",
+            "model_selection_results": model_selection_results,
+            "model_config": selected_model_config,
         },
         indent=2,
     ),
