@@ -117,6 +117,23 @@ if missing_score_features:
     raise ValueError(f"score.csv is missing required features: {missing_score_features}")
 if df3["policy_id"].null_count() or df3["policy_id"].n_unique() != df3.height:
     raise ValueError("score.csv must contain one non-null, unique policy_id per row")
+if df2["policy_id"].null_count():
+    raise ValueError("train.csv must not contain null policy_id values")
+
+training_record_columns = ["snapshot_date", "target", *feat_cols]
+conflicting_training_policies = (
+    df2.group_by("policy_id")
+    .agg(pl.struct(training_record_columns).n_unique().alias("record_count"))
+    .filter(pl.col("record_count") > 1)
+)
+if conflicting_training_policies.height:
+    raise ValueError("train.csv contains policy_id values with conflicting model records")
+
+# Keep one normalized training record per policy line.
+training_rows_before_deduplication = df2.height
+df2 = df2.unique(subset=["policy_id"], keep="first", maintain_order=True)
+deduplicated_training_rows = training_rows_before_deduplication - df2.height
+print("deduplicated training rows:", deduplicated_training_rows)
 
 X = df2[feat_cols]
 y = df2["target"]
@@ -227,6 +244,8 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
         {
             "model_type": "logistic_regression",
             "training_period": "2020-2022",
+            "training_rows_before_deduplication": training_rows_before_deduplication,
+            "deduplicated_training_rows": deduplicated_training_rows,
             "model_selection_training_period": "2020",
             "validation_period": "2021",
             "test_period": "2022",
