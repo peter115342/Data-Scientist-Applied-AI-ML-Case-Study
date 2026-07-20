@@ -3,7 +3,7 @@ name = "commercial-auto-risk-scorer"
 version = "0.1.0"
 description = "Applied AI/ML case study for commercial auto policy risk scoring"
 requires-python = ">=3.12"
-dependencies = ["numpy", "polars", "scikit-learn"]
+dependencies = ["matplotlib", "numpy", "polars", "scikit-learn"]
 
 [dependency-groups]
 dev = ["ruff"]

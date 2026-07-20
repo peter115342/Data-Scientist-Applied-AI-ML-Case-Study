@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install -q "polars" "numpy" "matplotlib"
+# MAGIC %uv pip install "matplotlib==3.11.1" "numpy==2.5.1" "polars==1.42.1"
 
 # COMMAND ----------
 

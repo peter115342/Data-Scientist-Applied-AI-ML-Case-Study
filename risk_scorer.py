@@ -1,5 +1,5 @@
 # Databricks notebook source
-# MAGIC %pip install -q "polars" "numpy" "scikit-learn"
+# MAGIC %uv pip install "matplotlib==3.11.1" "numpy==2.5.1" "polars==1.42.1" "scikit-learn==1.9.0"
 
 # COMMAND ----------
 
@@ -23,6 +23,7 @@ import json
 from pathlib import Path
 
 from joblib import dump
+from matplotlib import pyplot as plt
 import polars as pl
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -41,6 +42,7 @@ ARTIFACT_DIR = Path("artifacts")
 VALIDATION_CUTOFF = "2021-01-01"
 TEST_CUTOFF = "2022-01-01"
 CANDIDATE_C_VALUES = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
+LEARNING_CURVE_FRACTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]
 MODEL_CONFIG = {"max_iter": 1000}
 LOG_FEATURES = {
     "vehicle_count": "log_vehicle_count",
@@ -197,6 +199,24 @@ def build_model(model_config):
     return make_pipeline(preprocessor, LogisticRegression(**model_config))
 
 
+def save_temporal_learning_curve(results):
+    training_rows = [result["training_rows"] for result in results]
+    training_scores = [result["training_roc_auc"] for result in results]
+    validation_scores = [result["validation_roc_auc"] for result in results]
+
+    plt.figure(figsize=(8, 4.5))
+    plt.plot(training_rows, training_scores, marker="o", label="Training (2020)")
+    plt.plot(training_rows, validation_scores, marker="o", label="Validation (2021)")
+    plt.xlabel("Training rows")
+    plt.ylabel("ROC-AUC")
+    plt.title("Temporal learning curve")
+    plt.ylim(0.5, 1.0)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(ARTIFACT_DIR / "temporal_learning_curve.png", dpi=150)
+    plt.close()
+
+
 model_selection_results = []
 for candidate_c in CANDIDATE_C_VALUES:
     candidate_config = {**MODEL_CONFIG, "C": candidate_c}
@@ -223,6 +243,30 @@ selected_result = max(
 )
 selected_model_config = {**MODEL_CONFIG, "C": selected_result["C"]}
 print("selected model config:", selected_model_config)
+
+learning_curve_results = []
+ordered_tuning_train = tuning_train_df.sort("snapshot_date")
+for fraction in LEARNING_CURVE_FRACTIONS:
+    row_count = round(ordered_tuning_train.height * fraction)
+    learning_frame = ordered_tuning_train.head(row_count)
+    learning_model = build_model(selected_model_config)
+    learning_model.fit(learning_frame[feat_cols], learning_frame["target"])
+    learning_curve_results.append(
+        {
+            "training_rows": row_count,
+            "training_roc_auc": roc_auc_score(
+                learning_frame["target"],
+                learning_model.predict_proba(learning_frame[feat_cols])[:, 1],
+            ),
+            "validation_roc_auc": roc_auc_score(
+                y_validation,
+                learning_model.predict_proba(X_validation)[:, 1],
+            ),
+        }
+    )
+
+ARTIFACT_DIR.mkdir(exist_ok=True)
+save_temporal_learning_curve(learning_curve_results)
 
 tmp = build_model(selected_model_config)
 tmp.fit(X_train, y_train)
@@ -273,6 +317,7 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "test_cutoff": TEST_CUTOFF,
             "model_selection_metric": "roc_auc",
             "model_selection_results": model_selection_results,
+            "temporal_learning_curve": learning_curve_results,
             "model_config": selected_model_config,
         },
         indent=2,
