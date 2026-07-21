@@ -51,12 +51,60 @@ LOG_FEATURES = {
     "prior_loss_amount": "log_prior_loss_amount",
     "annual_premium": "log_annual_premium",
 }
+category_columns = [
+    "coverage_type",
+    "business_type",
+    "state",
+    "snapshot_month",
+    "payment_frequency",
+]
+numeric_columns = [
+    "vehicle_count",
+    "vehicle_avg_age",
+    "driver_count",
+    "driver_avg_age",
+    "years_in_business",
+    "prior_year_mileage_000",
+    "prior_apd_claim_count",
+    "prior_al_claim_count",
+    "prior_loss_amount",
+    "deductible",
+    "coverage_limit_000",
+    "annual_premium",
+    "risk_score_external",
+    "num_heavy_vehicles",
+    *LOG_FEATURES.values(),
+]
+feat_cols = category_columns + numeric_columns
+RAW_FEATURE_COLUMNS = (
+    set(feat_cols) - {"snapshot_month", *LOG_FEATURES.values()}
+)
+REQUIRED_TRAIN_COLUMNS = {"policy_id", "snapshot_date", "claim_count", *RAW_FEATURE_COLUMNS}
+REQUIRED_SCORE_COLUMNS = {"policy_id", "snapshot_date", *RAW_FEATURE_COLUMNS}
 
 # COMMAND ----------
 
 # ---- load ----
 df2 = pl.read_csv(TRAIN_DATA_PATH)
 df3 = pl.read_csv(SCORE_DATA_PATH)
+
+
+def validate_input_schema(frame, dataset_name, required_columns):
+    missing_columns = required_columns - set(frame.columns)
+    if missing_columns:
+        raise ValueError(
+            f"{dataset_name} is missing required columns: {sorted(missing_columns)}"
+        )
+
+    parsed_snapshot_dates = frame.select(
+        pl.col("snapshot_date").str.strptime(pl.Date, "%Y-%m-%d", strict=False)
+    )
+    if parsed_snapshot_dates["snapshot_date"].null_count():
+        raise ValueError(f"{dataset_name} contains null or invalid snapshot_date values")
+
+
+validate_input_schema(df2, "train.csv", REQUIRED_TRAIN_COLUMNS)
+validate_input_schema(df3, "score.csv", REQUIRED_SCORE_COLUMNS)
 
 print("train:", df2.shape)
 print("score:", df3.shape)
@@ -99,31 +147,6 @@ print("positive rate:", round(df2["target"].mean(), 3))
 # COMMAND ----------
 
 # ---- features ----
-category_columns = [
-    "coverage_type",
-    "business_type",
-    "state",
-    "snapshot_month",
-    "payment_frequency",
-]
-numeric_columns = [
-    "vehicle_count",
-    "vehicle_avg_age",
-    "driver_count",
-    "driver_avg_age",
-    "years_in_business",
-    "prior_year_mileage_000",
-    "prior_apd_claim_count",
-    "prior_al_claim_count",
-    "prior_loss_amount",
-    "deductible",
-    "coverage_limit_000",
-    "annual_premium",
-    "risk_score_external",
-    "num_heavy_vehicles",
-    *LOG_FEATURES.values(),
-]
-feat_cols = category_columns + numeric_columns
 
 missing_score_features = set(feat_cols) - set(df3.columns)
 if missing_score_features:
