@@ -73,9 +73,9 @@ df3 = df3.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_m
 invalid_training_premiums = df2.filter(pl.col("annual_premium") < 0).height
 invalid_scoring_premiums = df3.filter(pl.col("annual_premium") < 0).height
 # Treat negative premiums as missing.
-premium_sanitization = pl.when(pl.col("annual_premium") < 0).then(
-    None
-).otherwise(pl.col("annual_premium"))
+premium_sanitization = (
+    pl.when(pl.col("annual_premium") < 0).then(None).otherwise(pl.col("annual_premium"))
+)
 df2 = df2.with_columns(premium_sanitization.alias("annual_premium"))
 df3 = df3.with_columns(premium_sanitization.alias("annual_premium"))
 print("invalid training premiums converted to null:", invalid_training_premiums)
@@ -127,7 +127,9 @@ feat_cols = category_columns + numeric_columns
 
 missing_score_features = set(feat_cols) - set(df3.columns)
 if missing_score_features:
-    raise ValueError(f"score.csv is missing required features: {missing_score_features}")
+    raise ValueError(
+        f"score.csv is missing required features: {missing_score_features}"
+    )
 if df3["policy_id"].null_count() or df3["policy_id"].n_unique() != df3.height:
     raise ValueError("score.csv must contain one non-null, unique policy_id per row")
 if df2["policy_id"].null_count():
@@ -140,7 +142,9 @@ conflicting_training_policies = (
     .filter(pl.col("record_count") > 1)
 )
 if conflicting_training_policies.height:
-    raise ValueError("train.csv contains policy_id values with conflicting model records")
+    raise ValueError(
+        "train.csv contains policy_id values with conflicting model records"
+    )
 
 # Keep one normalized training record per policy line.
 training_rows_before_deduplication = df2.height
@@ -199,7 +203,7 @@ def build_model(model_config):
     return make_pipeline(preprocessor, LogisticRegression(**model_config))
 
 
-def save_temporal_learning_curve(results):
+def plot_temporal_learning_curve(results):
     training_rows = [result["training_rows"] for result in results]
     training_scores = [result["training_roc_auc"] for result in results]
     validation_scores = [result["validation_roc_auc"] for result in results]
@@ -213,8 +217,6 @@ def save_temporal_learning_curve(results):
     plt.ylim(0.5, 1.0)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(ARTIFACT_DIR / "temporal_learning_curve.png", dpi=150)
-    plt.close()
 
 
 model_selection_results = []
@@ -226,9 +228,7 @@ for candidate_c in CANDIDATE_C_VALUES:
     model_selection_results.append(
         {
             "C": candidate_c,
-            "validation_roc_auc": roc_auc_score(
-                y_validation, candidate_probabilities
-            ),
+            "validation_roc_auc": roc_auc_score(y_validation, candidate_probabilities),
             "validation_average_precision": average_precision_score(
                 y_validation, candidate_probabilities
             ),
@@ -264,9 +264,6 @@ for fraction in LEARNING_CURVE_FRACTIONS:
             ),
         }
     )
-
-ARTIFACT_DIR.mkdir(exist_ok=True)
-save_temporal_learning_curve(learning_curve_results)
 
 tmp = build_model(selected_model_config)
 tmp.fit(X_train, y_train)
@@ -336,3 +333,5 @@ if predictions.height != df3.height or predictions["risk_score"].null_count():
     raise ValueError("predictions must contain one non-null risk_score per policy")
 predictions.write_csv(PREDICTIONS_PATH)
 print(f"done -- {PREDICTIONS_PATH} written")
+plot_temporal_learning_curve(learning_curve_results)
+plt.show()
