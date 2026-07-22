@@ -46,6 +46,7 @@ CANDIDATE_C_VALUES = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 LEARNING_CURVE_FRACTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]
 DRIFT_BIN_COUNT = 10
 DRIFT_PSI_ALERT_THRESHOLD = 0.25
+KNOWN_BUSINESS_TYPES = {"trucking", "retail", "construction", "service", "other"}
 MODEL_CONFIG = {"max_iter": 1000}
 LOG_FEATURES = {
     "vehicle_count": "log_vehicle_count",
@@ -104,6 +105,30 @@ def validate_input_schema(frame, dataset_name, required_columns):
     )
     if parsed_snapshot_dates["snapshot_date"].null_count():
         raise ValueError(f"{dataset_name} contains null or invalid snapshot_date values")
+
+
+def normalize_business_types(frame):
+    normalized_business_type = pl.col("business_type").str.strip_chars().str.to_lowercase()
+    unknown_business_types = (
+        frame.select(normalized_business_type.alias("business_type"))
+        .filter(
+            pl.col("business_type").is_not_null()
+            & ~pl.col("business_type").is_in(KNOWN_BUSINESS_TYPES)
+        )
+        .group_by("business_type")
+        .len()
+        .sort("business_type")
+        .to_dicts()
+    )
+    normalized_frame = frame.with_columns(
+        pl.when(normalized_business_type.is_null())
+        .then(None)
+        .when(normalized_business_type.is_in(KNOWN_BUSINESS_TYPES))
+        .then(normalized_business_type)
+        .otherwise(pl.lit("other"))
+        .alias("business_type")
+    )
+    return normalized_frame, unknown_business_types
 
 
 def numeric_population_stability_index(reference, comparison):
@@ -183,8 +208,9 @@ print("score:", df3.shape)
 
 # ---- preprocessing ----
 
-df2 = df2.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
-df3 = df3.with_columns(pl.col("business_type").str.strip_chars().str.to_lowercase())
+df2, unknown_training_business_types = normalize_business_types(df2)
+df3, unknown_scoring_business_types = normalize_business_types(df3)
+print("unknown scoring business types mapped to other:", unknown_scoring_business_types)
 df2 = df2.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
 df3 = df3.with_columns(pl.col("snapshot_date").str.slice(5, 2).alias("snapshot_month"))
 
@@ -320,6 +346,35 @@ def plot_temporal_learning_curve(results):
     plt.tight_layout()
 
 
+def calculate_coverage_metrics(frame, probabilities):
+    evaluation_frame = frame.select(["coverage_type", "target"]).with_columns(
+        pl.Series("risk_score", probabilities),
+        pl.col("coverage_type").fill_null("<missing>"),
+    )
+    coverage_metrics = []
+    for coverage_type in sorted(evaluation_frame["coverage_type"].unique().to_list()):
+        segment = evaluation_frame.filter(pl.col("coverage_type") == coverage_type)
+        target = segment["target"]
+        risk_score = segment["risk_score"]
+        has_both_outcomes = target.n_unique() == 2
+        coverage_metrics.append(
+            {
+                "coverage_type": coverage_type,
+                "policy_count": segment.height,
+                "claim_rate": float(target.mean()),
+                "mean_predicted_risk": float(risk_score.mean()),
+                "roc_auc": float(roc_auc_score(target, risk_score))
+                if has_both_outcomes
+                else None,
+                "average_precision": float(average_precision_score(target, risk_score))
+                if has_both_outcomes
+                else None,
+                "brier_score": float(brier_score_loss(target, risk_score)),
+            }
+        )
+    return coverage_metrics
+
+
 model_selection_results = []
 for candidate_c in CANDIDATE_C_VALUES:
     candidate_config = {**MODEL_CONFIG, "C": candidate_c}
@@ -378,11 +433,13 @@ test_average_precision = average_precision_score(y_test, x1)
 test_brier_score = brier_score_loss(y_test, x1)
 test_mean_predicted_risk = x1.mean()
 test_observed_claim_rate = y_test.mean()
+test_coverage_metrics = calculate_coverage_metrics(test_df, x1)
 print("test_roc_auc:", test_roc_auc)
 print("test_average_precision:", test_average_precision)
 print("test_brier_score:", test_brier_score)
 print("test_mean_predicted_risk:", test_mean_predicted_risk)
 print("test_observed_claim_rate:", test_observed_claim_rate)
+print("test_coverage_metrics:", test_coverage_metrics)
 # results look solid
 
 # COMMAND ----------
@@ -401,6 +458,8 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "deduplicated_training_rows": deduplicated_training_rows,
             "invalid_training_premiums": invalid_training_premiums,
             "invalid_scoring_premiums": invalid_scoring_premiums,
+            "unknown_training_business_types": unknown_training_business_types,
+            "unknown_scoring_business_types": unknown_scoring_business_types,
             "model_selection_training_period": "2020",
             "validation_period": "2021",
             "test_period": "2022",
@@ -409,6 +468,7 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "test_brier_score": test_brier_score,
             "test_mean_predicted_risk": test_mean_predicted_risk,
             "test_observed_claim_rate": test_observed_claim_rate,
+            "test_coverage_metrics": test_coverage_metrics,
             "feature_columns": feat_cols,
             "log1p_features": LOG_FEATURES,
             "validation_cutoff": VALIDATION_CUTOFF,
