@@ -24,6 +24,7 @@ from pathlib import Path
 
 from joblib import dump
 from matplotlib import pyplot as plt
+import numpy as np
 import polars as pl
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
@@ -43,6 +44,8 @@ VALIDATION_CUTOFF = "2021-01-01"
 TEST_CUTOFF = "2022-01-01"
 CANDIDATE_C_VALUES = [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]
 LEARNING_CURVE_FRACTIONS = [0.2, 0.4, 0.6, 0.8, 1.0]
+DRIFT_BIN_COUNT = 10
+DRIFT_PSI_ALERT_THRESHOLD = 0.25
 MODEL_CONFIG = {"max_iter": 1000}
 LOG_FEATURES = {
     "vehicle_count": "log_vehicle_count",
@@ -101,6 +104,73 @@ def validate_input_schema(frame, dataset_name, required_columns):
     )
     if parsed_snapshot_dates["snapshot_date"].null_count():
         raise ValueError(f"{dataset_name} contains null or invalid snapshot_date values")
+
+
+def numeric_population_stability_index(reference, comparison):
+    reference = np.asarray(reference.drop_nulls().to_list(), dtype=float)
+    comparison = np.asarray(comparison.drop_nulls().to_list(), dtype=float)
+    reference = reference[np.isfinite(reference)]
+    comparison = comparison[np.isfinite(comparison)]
+    if not len(reference) or not len(comparison):
+        return None
+
+    bin_edges = np.unique(
+        np.quantile(reference, np.linspace(0, 1, DRIFT_BIN_COUNT + 1))
+    )
+    if len(bin_edges) < 3:
+        return 0.0
+    bin_edges[0] = -np.inf
+    bin_edges[-1] = np.inf
+    reference_share = np.histogram(reference, bins=bin_edges)[0] / len(reference)
+    comparison_share = np.histogram(comparison, bins=bin_edges)[0] / len(comparison)
+    reference_share = np.clip(reference_share, 1e-6, None)
+    comparison_share = np.clip(comparison_share, 1e-6, None)
+    return float(
+        np.sum((comparison_share - reference_share) * np.log(comparison_share / reference_share))
+    )
+
+
+def build_feature_drift_report(reference_frame, scoring_frame):
+    numeric_drift = []
+    for column in numeric_columns:
+        psi = numeric_population_stability_index(
+            reference_frame[column], scoring_frame[column]
+        )
+        numeric_drift.append(
+            {
+                "feature": column,
+                "population_stability_index": psi,
+                "alert": psi is not None and psi >= DRIFT_PSI_ALERT_THRESHOLD,
+                "training_missing_rate": reference_frame[column].null_count()
+                / reference_frame.height,
+                "scoring_missing_rate": scoring_frame[column].null_count()
+                / scoring_frame.height,
+            }
+        )
+
+    categorical_drift = []
+    for column in category_columns:
+        reference_values = reference_frame[column].fill_null("<missing>").to_list()
+        scoring_values = scoring_frame[column].fill_null("<missing>").to_list()
+        categories = set(reference_values) | set(scoring_values)
+        distribution_distance = 0.5 * sum(
+            abs(
+                reference_values.count(category) / len(reference_values)
+                - scoring_values.count(category) / len(scoring_values)
+            )
+            for category in categories
+        )
+        categorical_drift.append(
+            {
+                "feature": column,
+                "total_variation_distance": distribution_distance,
+                "new_scoring_categories": sorted(
+                    set(scoring_values) - set(reference_values)
+                ),
+            }
+        )
+
+    return {"numeric": numeric_drift, "categorical": categorical_drift}
 
 
 validate_input_schema(df2, "train.csv", REQUIRED_TRAIN_COLUMNS)
@@ -174,6 +244,14 @@ training_rows_before_deduplication = df2.height
 df2 = df2.unique(subset=["policy_id"], keep="first", maintain_order=True)
 deduplicated_training_rows = training_rows_before_deduplication - df2.height
 print("deduplicated training rows:", deduplicated_training_rows)
+
+feature_drift_report = build_feature_drift_report(df2, df3)
+numeric_drift_alerts = [
+    result["feature"]
+    for result in feature_drift_report["numeric"]
+    if result["alert"]
+]
+print("numeric PSI alerts:", numeric_drift_alerts)
 
 X = df2[feat_cols]
 y = df2["target"]
@@ -338,6 +416,7 @@ dump(tmp, ARTIFACT_DIR / "risk_model.joblib")
             "model_selection_metric": "roc_auc",
             "model_selection_results": model_selection_results,
             "temporal_learning_curve": learning_curve_results,
+            "scoring_feature_drift": feature_drift_report,
             "model_config": selected_model_config,
         },
         indent=2,
