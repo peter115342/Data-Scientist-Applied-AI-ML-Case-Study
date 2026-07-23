@@ -2,7 +2,7 @@ name: Deploy presentation
 
 on:
   push:
-    branches: [main]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
