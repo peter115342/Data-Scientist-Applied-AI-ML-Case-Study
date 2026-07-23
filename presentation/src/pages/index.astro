@@ -1,6 +1,10 @@
 ---
 import "reveal.js/dist/reveal.css";
 import "reveal.js/dist/theme/white.css";
+
+const figurePath = (filename) =>
+  `${import.meta.env.BASE_URL}/figures/${filename}`;
+const publicPath = (filename) => `${import.meta.env.BASE_URL}/${filename}`;
 ---
 
 <!doctype html>
@@ -96,19 +100,19 @@ import "reveal.js/dist/theme/white.css";
         <section>
           <div class="chart-grid">
             <img
-              src="/figures/eda-claim-rates.png"
+              src={figurePath("eda-claim-rates.png")}
               alt="Claim rate by coverage and business type"
             />
             <img
-              src="/figures/eda-risk-score-bands.png"
+              src={figurePath("eda-risk-score-bands.png")}
               alt="Claim rate by external risk score band"
             />
             <img
-              src="/figures/eda-numeric-correlations.png"
+              src={figurePath("eda-numeric-correlations.png")}
               alt="Numeric feature correlations with the claim target"
             />
             <img
-              src="/figures/eda-train-score-risk-distribution.png"
+              src={figurePath("eda-train-score-risk-distribution.png")}
               alt="External risk score distribution in training and scoring data"
             />
           </div>
@@ -212,7 +216,7 @@ import "reveal.js/dist/theme/white.css";
           <h2>The model benefits from more history</h2>
           <figure class="learning-curve-card">
             <img
-              src="/figures/temporal-learning-curve.png"
+              src={figurePath("temporal-learning-curve.png")}
               alt="Training and validation ROC-AUC by cumulative 2020 training rows"
             />
           </figure>
@@ -288,7 +292,7 @@ import "reveal.js/dist/theme/white.css";
         <section>
           <img
             class="databricks-screenshot"
-            src="/figures/databricks_risk_scorer.png"
+            src={publicPath("databricks_risk_scorer.png")}
             alt="Risk scorer running from the Databricks Git folder on serverless compute"
           />
         </section>
@@ -338,6 +342,9 @@ import "reveal.js/dist/theme/white.css";
         </section>
       </div>
     </div>
+    <footer class="brand-footer">
+      <img src={publicPath("zurich_symbol.svg")} alt="Zurich symbol" />
+    </footer>
 
     <script>
       import Reveal from "reveal.js";
@@ -356,19 +363,23 @@ import "reveal.js/dist/theme/white.css";
 
 <style is:global>
   :root {
-    --accent: #007f73;
-    --ink: #172b3a;
-    --muted: #526777;
-    --panel: #eef7f5;
-    --line: #c8d9d5;
+    --zurich-blue: #003399;
+    --zurich-deep-blue: #02296a;
+    --zurich-tan: #d5ceb5;
+    --zurich-red: #ff5252;
+    --accent: var(--zurich-blue);
+    --ink: var(--zurich-deep-blue);
+    --muted: #575757;
+    --panel: rgb(213 206 181 / 70%);
+    --line: var(--zurich-tan);
   }
 
   body,
   .reveal-viewport {
-    background: #fbfcfd;
+    background: #fff;
   }
   .reveal {
-    font-family: Inter, Aptos, Arial, sans-serif;
+    font-family: Frutiger, "Frutiger LT Pro", Arial, sans-serif;
     color: var(--ink);
     font-size: 32px;
   }
@@ -381,13 +392,16 @@ import "reveal.js/dist/theme/white.css";
   }
   .reveal h1 {
     font-size: 2.05em;
+    font-weight: 700;
   }
   .reveal h2 {
     font-size: 1.4em;
+    font-weight: 300;
   }
   .reveal h3 {
     font-size: 0.72em;
     color: var(--accent);
+    font-weight: 300;
   }
   .reveal p,
   .reveal li {
@@ -401,6 +415,9 @@ import "reveal.js/dist/theme/white.css";
     color: var(--accent);
   }
   .reveal .progress {
+    color: var(--accent);
+  }
+  .reveal .controls {
     color: var(--accent);
   }
   .title-slide {
@@ -470,8 +487,8 @@ import "reveal.js/dist/theme/white.css";
     border-left: 5px solid var(--accent);
   }
   .bad {
-    border-left: 5px solid #ca5d5d;
-    background: #fff4f3;
+    border-left: 5px solid var(--zurich-red);
+    background: #fff1f1;
   }
   .figure-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -587,5 +604,17 @@ import "reveal.js/dist/theme/white.css";
   .metric span {
     font-size: 0.42em;
     color: var(--muted);
+  }
+  .brand-footer {
+    position: fixed;
+    z-index: 20;
+    bottom: 0.8rem;
+    left: 1.1rem;
+    pointer-events: none;
+  }
+  .brand-footer img {
+    display: block;
+    width: 3.4rem;
+    height: 3.4rem;
   }
 </style>
