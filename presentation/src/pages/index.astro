@@ -1,0 +1,591 @@
+---
+import "reveal.js/dist/reveal.css";
+import "reveal.js/dist/theme/white.css";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta
+      name="description"
+      content="Commercial auto risk scoring case study"
+    />
+    <title>Commercial Auto Risk Scoring</title>
+  </head>
+  <body>
+    <div class="reveal">
+      <div class="slides">
+        <section class="title-slide">
+          <p class="eyebrow">Applied AI / ML Data Scientist case study</p>
+          <h1>Commercial auto<br />risk scoring</h1>
+          <p class="muted">Peter Muzslay | July 2026</p>
+          <p class="repo-link">
+            <a
+              href="https://github.com/peter115342/Data-Scientist-Applied-AI-ML-Case-Study"
+              >github.com/peter115342/Data-Scientist-Applied-AI-ML-Case-Study</a
+            >
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">1 | Business objective</p>
+          <h2>Support commercial-auto underwriting</h2>
+          <div class="two-column">
+            <div>
+              <h3>Decision</h3>
+              <p>
+                Estimate each policy line's probability of at least one claim,
+                to support consistent risk assessment.
+              </p>
+              <h3>Target</h3>
+              <p><code>claim_count &gt; 0</code> during the policy period.</p>
+            </div>
+            <div>
+              <h3>Data</h3>
+              <ul>
+                <li>15,000 unique labelled policies from 2020-2022</li>
+                <li>3,000 unlabelled policies from 2023-2024</li>
+                <li>APD and AL coverage lines</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">2 | Starting point</p>
+          <h2>What the supplied prototype did</h2>
+          <div class="two-column">
+            <div class="callout bad">
+              <h3>Method issues</h3>
+              <ul>
+                <li>Random split for a future scoring problem</li>
+                <li>Independent category codes in train and score</li>
+                <li>All missing values filled with zero</li>
+                <li>Training-set accuracy presented as performance</li>
+              </ul>
+            </div>
+            <div class="callout bad">
+              <h3>Leakage and output issues</h3>
+              <ul>
+                <li>Current-period claim fields were included as predictors</li>
+                <li>
+                  Late-payment behaviour was used despite point-in-time risk
+                </li>
+                <li>Hard class labels were written instead of probabilities</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">3 | EDA and data quality</p>
+          <h2>Analysis informed the improvements</h2>
+          <ul>
+            <li>Claim rates differ by coverage and business type.</li>
+            <li>External risk score is related to claim rate.</li>
+            <li>Fleet, mileage, loss, and premium fields are skewed.</li>
+            <li>
+              Data-quality checks found duplicated policies, missing values, and
+              invalid premiums.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <div class="chart-grid">
+            <img
+              src="/figures/eda-claim-rates.png"
+              alt="Claim rate by coverage and business type"
+            />
+            <img
+              src="/figures/eda-risk-score-bands.png"
+              alt="Claim rate by external risk score band"
+            />
+            <img
+              src="/figures/eda-numeric-correlations.png"
+              alt="Numeric feature correlations with the claim target"
+            />
+            <img
+              src="/figures/eda-train-score-risk-distribution.png"
+              alt="External risk score distribution in training and scoring data"
+            />
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">5 | Improvement: point-in-time features</p>
+          <h2>Removing information unavailable at underwriting</h2>
+          <div class="two-column">
+            <div class="callout good">
+              <h3>Kept</h3>
+              <p>
+                Fleet, driver, prior-claims, premium, coverage, geography,
+                payment frequency, and external-risk information.
+              </p>
+            </div>
+            <div class="callout bad">
+              <h3>Excluded</h3>
+              <p>
+                Current-period claim dates, paid amounts, claim status, days to
+                claim, and late-payment count.
+              </p>
+            </div>
+          </div>
+          <p class="muted small">
+            The data dictionary explicitly marks current-period claim fields as
+            only available after claim resolution.
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">6 | Improvement: temporal validation</p>
+          <h2>Testing on the future, not a random holdout</h2>
+          <div class="timeline">
+            <div><strong>2020</strong><span>Model selection</span></div>
+            <div><strong>2021</strong><span>Validation and C tuning</span></div>
+            <div><strong>2022</strong><span>Untouched test set</span></div>
+            <div><strong>2023-24</strong><span>Score new policies</span></div>
+          </div>
+          <p>
+            Six regularization strengths were compared on 2021 ROC-AUC. The
+            selected logistic-regression setting was <code>C = 0.01</code>.
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">7 | Improvement: robust model pipeline</p>
+          <h2>Making preprocessing consistent and safe</h2>
+          <div class="three-column">
+            <div>
+              <h3>Numeric</h3><p>
+                Median imputation, missingness indicators, standard scaling, and
+                log transforms for skewed variables.
+              </p>
+            </div>
+            <div>
+              <h3>Categorical</h3><p>
+                Most-frequent imputation and one-hot encoding with
+                unknown-category handling.
+              </p>
+            </div>
+            <div>
+              <h3>Records</h3><p>
+                75 duplicate policy records removed after consistency checks;
+                invalid premiums treated as missing.
+              </p>
+            </div>
+          </div>
+          <p class="muted small">
+            Final estimator: regularized logistic regression - interpretable and
+            suitable as a strong baseline.
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">8 | Results</p>
+          <h2>Held-out 2022 performance</h2>
+          <div class="metric-row">
+            <div class="metric"><strong>0.679</strong><span>ROC-AUC</span></div>
+            <div class="metric">
+              <strong>0.231</strong><span>Average precision</span>
+            </div>
+            <div class="metric">
+              <strong>0.105</strong><span>Brier score</span>
+            </div>
+          </div>
+          <div class="two-column compact">
+            <div><strong>AL</strong><br />ROC-AUC 0.660 | claim rate 9.4%</div>
+            <div>
+              <strong>APD</strong><br />ROC-AUC 0.657 | claim rate 15.9%
+            </div>
+          </div>
+          <p class="muted small">
+            Probability ranking and calibration are both reported; metrics are
+            also broken out by coverage.
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">9 | Learning curve</p>
+          <h2>The model benefits from more history</h2>
+          <figure class="learning-curve-card">
+            <img
+              src="/figures/temporal-learning-curve.png"
+              alt="Training and validation ROC-AUC by cumulative 2020 training rows"
+            />
+          </figure>
+          <p>
+            The training-validation gap narrows as data increases. Validation
+            performance plateaus near 0.66, so there is no strong sign of
+            overfitting.
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">10 | Improvement: production safeguards</p>
+          <h2>Making scoring repeatable and traceable</h2>
+          <div class="three-column">
+            <div>
+              <h3>Input contract</h3><p>
+                Required-column and date checks fail early with clear messages.
+              </p>
+            </div>
+            <div>
+              <h3>Category fallback</h3><p>
+                60 unseen scoring <em>rideshare</em> values map to <code
+                  >other</code
+                > and are recorded in metadata.
+              </p>
+            </div>
+            <div>
+              <h3>Outputs</h3><p>
+                The fitted model, metrics, configuration, and one non-null risk
+                score per policy are persisted.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <p class="eyebrow">11 | Improvement: monitoring</p>
+          <h2>Detecting input shift before outcomes arrive</h2>
+          <ul>
+            <li>
+              Numeric features: Population Stability Index (PSI) plus
+              missingness rates.
+            </li>
+            <li>
+              Categorical features: distribution distance and unseen values.
+            </li>
+            <li>PSI alert threshold: 0.25.</li>
+          </ul>
+          <p class="callout good">
+            Current 2023-2024 scoring data: no numeric PSI alerts.
+          </p>
+        </section>
+
+        <section>
+          <p class="eyebrow">12 | Databricks delivery</p>
+          <h2>Runnable from the Databricks Git folder</h2>
+          <ul>
+            <li>
+              Both the scorer and EDA use Databricks notebook source format.
+            </li>
+            <li>
+              Both notebooks generate a requirements file from the pinned <code
+                >pyproject.toml</code
+              > dependencies, then install it with <code>%uv pip</code>.
+            </li>
+            <li>
+              The project is available as a Databricks Git folder, so the same
+              version-controlled files can be run there.
+            </li>
+          </ul>
+        </section>
+
+        <section>
+          <img
+            class="databricks-screenshot"
+            src="/figures/databricks_risk_scorer.png"
+            alt="Risk scorer running from the Databricks Git folder on serverless compute"
+          />
+        </section>
+
+        <section>
+          <p class="eyebrow">14 | Production roadmap</p>
+          <h2>What remains before being production-ready</h2>
+          <ol>
+            <li>
+              Governed ingestion, scheduled scoring, and data-quality ownership.
+            </li>
+            <li>Model registry, automated tests, approvals, and rollback.</li>
+            <li>
+              Outcome-based monitoring for drift, calibration, and coverage
+              performance.
+            </li>
+            <li>
+              Underwriting thresholds, human review, fairness analysis, and
+              business-value measurement.
+            </li>
+          </ol>
+          <p class="muted small">
+            Limitation: this model predicts claim occurrence, not severity or
+            total loss cost.
+          </p>
+        </section>
+
+        <section class="title-slide">
+          <p class="eyebrow">15 | Close</p>
+          <h2>Key takeaway</h2>
+          <p class="subtitle">
+            The prototype became a leakage-aware, time-validated probability
+            scorer with repeatable preprocessing, meaningful evaluation, and
+            production safeguards.
+          </p>
+          <p class="learning-outcomes">
+            What I learned: temporal validation, calibration, and drift
+            monitoring.
+          </p>
+          <hr />
+          <p class="small muted">
+            AI disclosure: I used GPT-5.6 Terra from OpenAI to brainstorm,
+            review implementation choices, generate presentation code, and help
+            explain results. I reviewed the approach and verified all changes
+            and results.
+          </p>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      import Reveal from "reveal.js";
+
+      const deck = new Reveal({
+        controls: true,
+        hash: true,
+        progress: true,
+        slideNumber: "c/t",
+        transition: "fade",
+      });
+      deck.initialize();
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --accent: #007f73;
+    --ink: #172b3a;
+    --muted: #526777;
+    --panel: #eef7f5;
+    --line: #c8d9d5;
+  }
+
+  body,
+  .reveal-viewport {
+    background: #fbfcfd;
+  }
+  .reveal {
+    font-family: Inter, Aptos, Arial, sans-serif;
+    color: var(--ink);
+    font-size: 32px;
+  }
+  .reveal h1,
+  .reveal h2,
+  .reveal h3 {
+    color: var(--ink);
+    letter-spacing: -0.03em;
+    text-transform: none;
+  }
+  .reveal h1 {
+    font-size: 2.05em;
+  }
+  .reveal h2 {
+    font-size: 1.4em;
+  }
+  .reveal h3 {
+    font-size: 0.72em;
+    color: var(--accent);
+  }
+  .reveal p,
+  .reveal li {
+    font-size: 0.68em;
+    line-height: 1.35;
+  }
+  .reveal li {
+    margin: 0.35em 0;
+  }
+  .reveal code {
+    color: var(--accent);
+  }
+  .reveal .progress {
+    color: var(--accent);
+  }
+  .title-slide {
+    text-align: left;
+  }
+  .eyebrow {
+    color: var(--accent);
+    font-size: 0.42em !important;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .subtitle {
+    font-size: 0.78em !important;
+    max-width: 25em;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .small {
+    font-size: 0.44em !important;
+  }
+  .reveal p.muted.small {
+    color: #2c4753;
+    font-size: 0.54em !important;
+  }
+  .repo-link a {
+    color: var(--accent);
+    font-size: 0.62em;
+    text-decoration: none;
+  }
+  .learning-outcomes {
+    color: var(--accent);
+    font-size: 0.58em !important;
+    font-weight: 600;
+  }
+  .two-column,
+  .three-column,
+  .figure-grid,
+  .metric-row {
+    display: grid;
+    gap: 0.7em;
+  }
+  .two-column {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .three-column {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .compact {
+    margin-top: 0.7em;
+    text-align: center;
+    font-size: 0.61em;
+  }
+  .callout,
+  .metric,
+  .three-column > div,
+  .figure-slot {
+    background: var(--panel);
+    border-radius: 0.35em;
+    padding: 0.55em 0.65em;
+  }
+  .callout {
+    margin-top: 0.6em;
+  }
+  .good {
+    border-left: 5px solid var(--accent);
+  }
+  .bad {
+    border-left: 5px solid #ca5d5d;
+    background: #fff4f3;
+  }
+  .figure-grid {
+    grid-template-columns: repeat(2, 1fr);
+    margin-top: 0.6em;
+  }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.35em;
+  }
+  .chart-grid img {
+    display: block;
+    width: 100%;
+    height: 10.2em;
+    object-fit: contain;
+  }
+  .figure-card {
+    margin: 0;
+    border: 1px solid var(--line);
+    border-radius: 0.35em;
+    padding: 0.3em;
+    background: #fff;
+  }
+  .figure-card img {
+    display: block;
+    width: 100%;
+    height: 5.6em;
+    object-fit: contain;
+  }
+  .figure-card figcaption {
+    color: var(--muted);
+    font-size: 0.36em;
+    margin-top: 0.35em;
+    text-align: center;
+  }
+  .learning-curve-card {
+    margin: 0.55em 0;
+    border: 1px solid var(--line);
+    border-radius: 0.35em;
+    padding: 0.3em;
+    background: #fff;
+  }
+  .learning-curve-card img {
+    display: block;
+    width: 100%;
+    height: 12.5em;
+    object-fit: contain;
+  }
+  .databricks-screenshot {
+    display: block;
+    width: 100%;
+    height: 16em;
+    object-fit: contain;
+  }
+  .figure-slot {
+    min-height: 3.2em;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+    border: 1px dashed #86aaa2;
+    color: var(--muted);
+  }
+  .figure-slot strong {
+    color: var(--ink);
+    font-size: 0.62em;
+  }
+  .figure-slot span,
+  .figure-slot small {
+    font-size: 0.42em;
+    margin-top: 0.22em;
+  }
+  .learning-curve {
+    min-height: 7em;
+    margin: 0.7em 0;
+  }
+  .timeline {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.3em;
+    margin: 0.8em 0;
+  }
+  .timeline div {
+    border-top: 3px solid var(--accent);
+    padding-top: 0.4em;
+  }
+  .timeline strong,
+  .timeline span {
+    display: block;
+  }
+  .timeline strong {
+    font-size: 0.67em;
+  }
+  .timeline span {
+    color: var(--muted);
+    font-size: 0.4em;
+  }
+  .metric-row {
+    grid-template-columns: repeat(3, 1fr);
+    margin: 0.6em 0;
+  }
+  .metric {
+    text-align: center;
+  }
+  .metric strong,
+  .metric span {
+    display: block;
+  }
+  .metric strong {
+    color: var(--accent);
+    font-size: 1.2em;
+  }
+  .metric span {
+    font-size: 0.42em;
+    color: var(--muted);
+  }
+</style>

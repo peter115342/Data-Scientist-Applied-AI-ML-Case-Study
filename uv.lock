@@ -24,10 +24,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "matplotlib" },
-    { name = "numpy" },
-    { name = "polars" },
-    { name = "scikit-learn" },
+    { name = "matplotlib", specifier = "==3.11.1" },
+    { name = "numpy", specifier = "==2.5.1" },
+    { name = "polars", specifier = "==1.42.1" },
+    { name = "scikit-learn", specifier = "==1.9.0" },
 ]
 
 [package.metadata.requires-dev]

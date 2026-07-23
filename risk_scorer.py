@@ -1,5 +1,15 @@
 # Databricks notebook source
-# MAGIC %uv pip install "matplotlib==3.11.1" "numpy==2.5.1" "polars==1.42.1" "scikit-learn==1.9.0"
+# MAGIC %python
+# MAGIC import tomllib
+# MAGIC from pathlib import Path
+# MAGIC
+# MAGIC requirements_path = Path("/tmp/commercial-auto-risk-requirements.txt")
+# MAGIC dependencies = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+# MAGIC requirements_path.write_text("\n".join(dependencies), encoding="utf-8")
+
+# COMMAND ----------
+
+# MAGIC %uv pip install -r /tmp/commercial-auto-risk-requirements.txt
 
 # COMMAND ----------
 

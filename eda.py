@@ -1,9 +1,20 @@
 # Databricks notebook source
-# MAGIC %uv pip install "matplotlib==3.11.1" "numpy==2.5.1" "polars==1.42.1"
+# MAGIC %python
+# MAGIC import tomllib
+# MAGIC from pathlib import Path
+# MAGIC
+# MAGIC requirements_path = Path("/tmp/commercial-auto-risk-requirements.txt")
+# MAGIC dependencies = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+# MAGIC requirements_path.write_text("\n".join(dependencies), encoding="utf-8")
 
 # COMMAND ----------
 
-dbutils.library.restartPython()
+# MAGIC %uv pip install -r /tmp/commercial-auto-risk-requirements.txt
+
+# COMMAND ----------
+
+if "dbutils" in globals():
+    globals()["dbutils"].library.restartPython()
 
 # COMMAND ----------
 
@@ -13,11 +24,24 @@ dbutils.library.restartPython()
 
 # COMMAND ----------
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
-import numpy as np
 import polars as pl
 
 plt.style.use("seaborn-v0_8-whitegrid")
+pl.Config.set_tbl_formatting("ASCII_MARKDOWN")
+FIGURES_DIR = Path("artifacts/figures")
+FIGURE_DPI = 150
+
+
+def save_and_show(filename):
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    figure_path = FIGURES_DIR / filename
+    plt.tight_layout()
+    plt.savefig(figure_path, dpi=FIGURE_DPI, bbox_inches="tight")
+    print(f"saved figure: {figure_path}")
+    plt.show()
 
 # COMMAND ----------
 
@@ -59,7 +83,7 @@ plt.title("Claim rate by snapshot year")
 plt.xlabel("Snapshot year")
 plt.ylabel("Claim rate (%)")
 plt.ylim(bottom=0)
-plt.show()
+save_and_show("eda-yearly-claim-rate.png")
 
 # COMMAND ----------
 
@@ -95,8 +119,7 @@ axes[1].bar(
 axes[1].set_title("Claim rate by business type")
 axes[1].set_ylabel("Claim rate (%)")
 axes[1].tick_params(axis="x", rotation=30)
-plt.tight_layout()
-plt.show()
+save_and_show("eda-claim-rates.png")
 
 # COMMAND ----------
 
@@ -126,7 +149,7 @@ plt.bar(risk_band_claim_rate["risk_band"], risk_band_claim_rate["claim_rate"] * 
 plt.title("Claim rate by external risk-score band")
 plt.xlabel("External risk score")
 plt.ylabel("Claim rate (%)")
-plt.show()
+save_and_show("eda-risk-score-bands.png")
 
 # COMMAND ----------
 
@@ -169,7 +192,7 @@ plt.barh(correlations["feature"], correlations["correlation"])
 plt.title("Linear correlation with claim indicator")
 plt.xlabel("Correlation")
 plt.gca().invert_yaxis()
-plt.show()
+save_and_show("eda-numeric-correlations.png")
 
 # COMMAND ----------
 
@@ -193,7 +216,7 @@ plt.title("External risk-score distribution: train versus score")
 plt.xlabel("External risk score")
 plt.ylabel("Density")
 plt.legend()
-plt.show()
+save_and_show("eda-train-score-risk-distribution.png")
 
 # COMMAND ----------
 
