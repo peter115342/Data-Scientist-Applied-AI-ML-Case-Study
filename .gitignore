@@ -14,6 +14,5 @@ htmlcov/
 .ipynb_checkpoints/
 
 # Generated local artifacts
-predictions.csv
 artifacts/
 models/
